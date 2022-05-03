@@ -1,0 +1,4 @@
+.clasp.json
+yarn.lock
+node_modules/**
+.env
