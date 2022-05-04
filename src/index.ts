@@ -3,6 +3,9 @@
 // 型定義ファイルは出力されないのでOK
 import { BlockChildrenRes } from "./types/notion/block"
 import { SearchRes } from "./types/notion/search"
+import { DatabaseRes } from "./types/notion/database"
+import { Attendance } from "./types/attendance"
+import { Page } from "./types/notion/page"
 
 
 const main = () => {
@@ -96,25 +99,50 @@ const main = () => {
         const row = block.table_row.cells ?? []
         switch (row[0][0].plain_text) {
             case "件名":
-                invoiceDetailInfo.subject = row[1][0] !== null ? row[1][0].plain_text : Utilities.formatDate(newDate, "Asia/Tokyo", "MM") + "月分ご請求"
+                invoiceDetailInfo.subject = row[1][0] !== undefined ? row[1][0].plain_text : Utilities.formatDate(newDate, "Asia/Tokyo", "MM") + "月分ご請求"
                 break;
             case "請求書No.":
                 invoiceDetailInfo.no = row[1][0].plain_text
                 break;
             case "請求日":
-                invoiceDetailInfo.date = row[1][0] !== null ? row[1][0].plain_text : Utilities.formatDate(newDate, "Asia/Tokyo", "yyyy/MM/dd")
+                invoiceDetailInfo.date = row[1][0] !== undefined ? row[1][0].plain_text : Utilities.formatDate(newDate, "Asia/Tokyo", "yyyy/MM/dd")
                 break;
             case "お支払い期限":
-                invoiceDetailInfo.deadline = row[1][0] !== null ? row[1][0].plain_text : (newDate.getMonth() + 2).toString() + "月末日"
+                invoiceDetailInfo.deadline = row[1][0] !== undefined ? row[1][0].plain_text : (newDate.getMonth() + 2).toString() + "月末日"
                 break;
         }
     })
 
     // 勤怠情報を取得 (db/query)
     const attendanceTableId = datePageBlockList.find(block => block.type === "child_database")?.id
+    const attendanceTable = postDbQueary({ headers, dbId: attendanceTableId ?? "" })
+    const attendance: Attendance[] = attendanceTable.map(row => {
+        const relationId = row.properties.業務内容.relation !== undefined ? row.properties.業務内容.relation[0].id : ""
+        const businessTable: Page = getPage({ headers, pageId: relationId })
+        const business = {
+            summary: "",
+            price: 0,
+            unit: ""
+        }
+        business.summary = businessTable.properties.摘要.title ? businessTable.properties.摘要.title[0].plain_text : ""
 
+        // TODO その他の時の処理
+        if (business.summary === "その他") {
+        } else {
+            business.price = Number(businessTable.properties.単価.number)
+            business.unit = businessTable.properties.単位.select?.name ?? ""
+        }
 
-    // 業務内容を取得 (pages) or その他の場合は別処理
+        return {
+            startDate: row.properties.勤務時間.date?.start,
+            endDate: row.properties.勤務時間.date?.end,
+            break: row.properties.休憩.number,
+            summary: business.summary,
+            price: business.price,
+            unit: business.unit
+        } as Attendance
+    })
+    Logger.log(attendance)
 
     // 時間の計算
 
@@ -152,6 +180,24 @@ interface getBlockChildrenProps {
     blockId: string
 }
 
+interface postDbQuearyProps {
+    headers: {
+        "content-type": string,
+        "Authorization": string,
+        "Notion-Version": string
+    }
+    dbId: string
+}
+
+interface getPageProps {
+    headers: {
+        "content-type": string,
+        "Authorization": string,
+        "Notion-Version": string
+    }
+    pageId: string
+}
+
 const setHeaders = (token: string, notionVersion: string) => {
     return {
         'content-type': 'application/json; charset=UTF-8',
@@ -179,4 +225,24 @@ const getBlockChildren = ({ headers, blockId }: getBlockChildrenProps) => {
     }
     const res: BlockChildrenRes = JSON.parse(UrlFetchApp.fetch(url, options).getContentText())
     return res.results
+}
+
+const postDbQueary = ({ headers, dbId }: postDbQuearyProps) => {
+    const url = `https://api.notion.com/v1/databases/${dbId}/query`
+    const options = {
+        method: 'post' as GoogleAppsScript.URL_Fetch.HttpMethod,
+        headers
+    }
+    const res: DatabaseRes = JSON.parse(UrlFetchApp.fetch(url, options).getContentText())
+    return res.results
+}
+
+const getPage = ({ headers, pageId }: getPageProps) => {
+    const url = `https://api.notion.com/v1/pages/${pageId}`
+    const options = {
+        method: "get" as GoogleAppsScript.URL_Fetch.HttpMethod,
+        headers
+    }
+    const res: Page = JSON.parse(UrlFetchApp.fetch(url, options).getContentText())
+    return res
 }
