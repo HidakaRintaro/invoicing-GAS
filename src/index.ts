@@ -11,6 +11,8 @@ const main = () => {
 
     const headers = setHeaders(token, notionVersion)
 
+    const newDate = new Date();
+
     // 請求書のIDを取得する (search)
     const invoicePageSearch = postSearch({ headers, payload: { query: "請求書" } })
     const invoicePageId = invoicePageSearch[0].id
@@ -66,18 +68,51 @@ const main = () => {
                 break;
         }
     })
-    Logger.log(invoiceBaseInfo)
 
     // 現在日時でSearchしIDを取得 (search)
-    const fmtDate = Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy-MM")
-    const datePageSeach = postSearch({ headers, payload: { query: fmtDate } })
-    const datePageId = datePageSeach[0]
+    const fmtDate = Utilities.formatDate(newDate, "Asia/Tokyo", "yyyy-MM")
+    const datePageSearch = postSearch({ headers, payload: { query: fmtDate } })
+    // TODO Slackなどに通知するなどして今月の請求書が見つからなかったことを連絡する
+    if (datePageSearch.length === 0) {
+        Logger.log("今月の請求書が見つかりませんでした")
+        return
+    }
+    const datePageId = datePageSearch[0].id
 
     // 勤怠のTableと件名などのブロックのIDを取得 (block/child)
+    const datePageBlockList = getBlockChildren({ headers, blockId: datePageId })
 
     // 件名・Noなどを取得 (block/child)
+    const invoiceDetailInfo = {
+        subject: "",
+        no: "",
+        date: "",
+        deadline: ""
+    }
+    const invoiceDetailBlockId = datePageBlockList.find(block => block.type === "table")?.id
+    const invoiceDetailInfoList = getBlockChildren({ headers, blockId: invoiceDetailBlockId ?? "" })
+    invoiceDetailInfoList.forEach(block => {
+        if (block.table_row === undefined) return
+        const row = block.table_row.cells ?? []
+        switch (row[0][0].plain_text) {
+            case "件名":
+                invoiceDetailInfo.subject = row[1][0] !== null ? row[1][0].plain_text : Utilities.formatDate(newDate, "Asia/Tokyo", "MM") + "月分ご請求"
+                break;
+            case "請求書No.":
+                invoiceDetailInfo.no = row[1][0].plain_text
+                break;
+            case "請求日":
+                invoiceDetailInfo.date = row[1][0] !== null ? row[1][0].plain_text : Utilities.formatDate(newDate, "Asia/Tokyo", "yyyy/MM/dd")
+                break;
+            case "お支払い期限":
+                invoiceDetailInfo.deadline = row[1][0] !== null ? row[1][0].plain_text : (newDate.getMonth() + 2).toString() + "月末日"
+                break;
+        }
+    })
 
     // 勤怠情報を取得 (db/query)
+    const attendanceTableId = datePageBlockList.find(block => block.type === "child_database")?.id
+
 
     // 業務内容を取得 (pages) or その他の場合は別処理
 
