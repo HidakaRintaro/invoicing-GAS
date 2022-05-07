@@ -9,6 +9,7 @@ import { Page } from "./types/notion/page"
 
 
 const main = () => {
+    const sheetId = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID") ?? ""
     const token = PropertiesService.getScriptProperties().getProperty("AUTH_TOKEN") ?? ""
     const notionVersion = PropertiesService.getScriptProperties().getProperty("NOTION_VERSION") ?? "2021-02-22"
 
@@ -145,14 +146,57 @@ const main = () => {
 
 
     // 時間の計算
-    const timeList: { summary: string, time: number }[] = []
+    const timeList: { summary: string, time: number, price: number, unit: string }[] = []
     attendances.forEach(attendance => {
         const diff = new Date(attendance.endDate).getTime() - new Date(attendance.startDate).getTime()
-        timeList.push({ summary: attendance.summary, time: (diff / (60 * 60 * 1000)) - attendance.break })
+        let checkAry = { index: 0, check: false }
+        timeList.forEach((timeRow, index) => {
+            checkAry.check = timeRow.summary === attendance.summary
+            checkAry.index = index
+        })
+        if (checkAry.check) {
+            timeList[checkAry.index].time += (diff / (60 * 60 * 1000) - attendance.break)
+        } else {
+            timeList.push({ summary: attendance.summary, time: (diff / (60 * 60 * 1000)) - attendance.break, price: attendance.price, unit: attendance.unit })
+        }
     })
 
 
     // スプレッドシートに書き出し
+    const ss = SpreadsheetApp.openById(sheetId)
+    const templateSheet = ss.getSheetByName("請求書テンプレ")
+    const sheet = templateSheet?.copyTo(ss).setName(fmtDate + "請求書")
+
+    sheet?.getRange("B4").setValue(invoiceBaseInfo.destination)
+    sheet?.getRange("O5").setValue(invoiceBaseInfo.name)
+    sheet?.getRange("O6").setValue(invoiceBaseInfo.zipCode)
+    sheet?.getRange("O7").setValue(invoiceBaseInfo.address)
+    sheet?.getRange("O8").setValue(invoiceBaseInfo.tel)
+    sheet?.getRange("O10").setValue(invoiceBaseInfo.bank)
+    sheet?.getRange("O11").setValue(invoiceBaseInfo.bankNumber)
+    sheet?.getRange("O12").setValue(invoiceBaseInfo.bankName)
+
+    sheet?.getRange("D8").setValue(invoiceDetailInfo.subject)
+    sheet?.getRange("Q2").setValue(invoiceDetailInfo.no)
+    sheet?.getRange("Q3").setValue(invoiceDetailInfo.date)
+    sheet?.getRange("N14").setValue(invoiceDetailInfo.deadline)
+
+    let subtotal: number = 0
+    timeList.forEach((TimeRow, index) => {
+        const rangeRowNo = index + 17
+        sheet?.getRange("B" + rangeRowNo).setValue(index + 1)
+        sheet?.getRange("C" + rangeRowNo).setValue(TimeRow.summary)
+        sheet?.getRange("K" + rangeRowNo).setValue(TimeRow.time)
+        sheet?.getRange("L" + rangeRowNo).setValue(TimeRow.unit)
+        sheet?.getRange("M" + rangeRowNo).setValue(TimeRow.price)
+        sheet?.getRange("P" + rangeRowNo).setValue(TimeRow.time * TimeRow.price)
+        subtotal += TimeRow.time * TimeRow.price
+    });
+
+    sheet?.getRange("M22").setValue(subtotal)
+    sheet?.getRange("M23").setValue(Math.ceil(subtotal * 0.1))
+    sheet?.getRange("M28").setValue(0)
+    sheet?.getRange("M29").setValue(subtotal + Math.ceil(subtotal * 0.1))
 
     // PDF化
 
