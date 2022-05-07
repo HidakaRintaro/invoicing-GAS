@@ -24,3 +24,11 @@ interface BlockChildren {
         cells: RichText[][]
     }
 }
+
+export interface Block {
+    file?: {
+        external: {
+            url: string
+        }
+    }
+}

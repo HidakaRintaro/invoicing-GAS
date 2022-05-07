@@ -1,7 +1,7 @@
 // https://github.com/google/clasp/blob/master/docs/typescript.md#modules-exports-and-imports
 
 // 型定義ファイルは出力されないのでOK
-import { BlockChildrenRes } from "./types/notion/block"
+import { Block, BlockChildren, BlockChildrenRes } from "./types/notion/block"
 import { SearchRes } from "./types/notion/search"
 import { DatabaseRes } from "./types/notion/database"
 import { Attendance } from "./types/attendance"
@@ -27,7 +27,7 @@ const main = () => {
     const invoicePageBlocks = getBlockChildren({ headers, blockId: invoicePageId })
     invoicePageBlocks.forEach((block) => {
         if (block.type === "table" && block.table?.table_width == 2) {
-            invoiceBaseInfoId = block.id
+            invoiceBaseInfoId = block.id ?? ""
         }
     })
 
@@ -239,12 +239,14 @@ const main = () => {
 
     // GoogleDriveに保存
     const folder = DriveApp.getFolderById(folderId)
-    folder.createFile(blob)
+    const fileData = folder.createFile(blob)
 
     // シートの削除
     ss.deleteSheet(sheet!)
 
     // PDFのURLをNotionに書き込み
+    const fileAreaId = datePageBlockList.find(block => block.type === "file")?.id
+    patchAppendBlock({ headers, blockId: fileAreaId ?? "", payload: { file: { external: { url: fileData.getDownloadUrl() } } } as Block })
 }
 
 
@@ -288,6 +290,16 @@ interface getPageProps {
         "Notion-Version": string
     }
     pageId: string
+}
+
+interface patchAppendBlockClidrenProps {
+    headers: {
+        "content-type": string,
+        "Authorization": string,
+        "Notion-Version": string
+    }
+    blockId: string
+    payload: Block
 }
 
 const setHeaders = (token: string, notionVersion: string) => {
@@ -337,4 +349,14 @@ const getPage = ({ headers, pageId }: getPageProps) => {
     }
     const res: Page = JSON.parse(UrlFetchApp.fetch(url, options).getContentText())
     return res
+}
+
+const patchAppendBlock = ({ headers, blockId, payload }: patchAppendBlockClidrenProps): void => {
+    const url = `https://api.notion.com/v1/blocks/${blockId}`
+    const options = {
+        method: 'patch' as GoogleAppsScript.URL_Fetch.HttpMethod,
+        headers,
+        payload: JSON.stringify(payload)
+    }
+    JSON.parse(UrlFetchApp.fetch(url, options).getContentText())
 }
