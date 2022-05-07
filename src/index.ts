@@ -116,7 +116,7 @@ const main = () => {
     // 勤怠情報を取得 (db/query)
     const attendanceTableId = datePageBlockList.find(block => block.type === "child_database")?.id
     const attendanceTable = postDbQueary({ headers, dbId: attendanceTableId ?? "" })
-    const attendance: Attendance[] = attendanceTable.map(row => {
+    const attendances: Attendance[] = attendanceTable.map(row => {
         const relationId = row.properties.業務内容.relation !== undefined ? row.properties.業務内容.relation[0].id : ""
         const businessTable: Page = getPage({ headers, pageId: relationId })
         const business = {
@@ -136,15 +136,21 @@ const main = () => {
         return {
             startDate: row.properties.勤務時間.date?.start,
             endDate: row.properties.勤務時間.date?.end,
-            break: row.properties.休憩.number,
+            break: row.properties.休憩.number ?? 0,
             summary: business.summary,
             price: business.price,
             unit: business.unit
         } as Attendance
     })
-    Logger.log(attendance)
+
 
     // 時間の計算
+    const timeList: { summary: string, time: number }[] = []
+    attendances.forEach(attendance => {
+        const diff = new Date(attendance.endDate).getTime() - new Date(attendance.startDate).getTime()
+        timeList.push({ summary: attendance.summary, time: (diff / (60 * 60 * 1000)) - attendance.break })
+    })
+
 
     // スプレッドシートに書き出し
 
