@@ -241,6 +241,9 @@ const main = () => {
     const folder = DriveApp.getFolderById(folderId)
     folder.createFile(blob)
 
+    // シートの削除
+    ss.deleteSheet(sheet!)
+
     // PDFのURLをNotionに書き込み
 }
 
