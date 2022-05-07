@@ -10,6 +10,7 @@ import { Page } from "./types/notion/page"
 
 const main = () => {
     const sheetId = PropertiesService.getScriptProperties().getProperty("SPREADSHEET_ID") ?? ""
+    const folderId = PropertiesService.getScriptProperties().getProperty("FOLDER_ID") ?? ""
     const token = PropertiesService.getScriptProperties().getProperty("AUTH_TOKEN") ?? ""
     const notionVersion = PropertiesService.getScriptProperties().getProperty("NOTION_VERSION") ?? "2021-02-22"
 
@@ -100,7 +101,7 @@ const main = () => {
         const row = block.table_row.cells ?? []
         switch (row[0][0].plain_text) {
             case "件名":
-                invoiceDetailInfo.subject = row[1][0] !== undefined ? row[1][0].plain_text : Utilities.formatDate(newDate, "Asia/Tokyo", "MM") + "月分ご請求"
+                invoiceDetailInfo.subject = row[1][0] !== undefined ? row[1][0].plain_text : Utilities.formatDate(newDate, "Asia/Tokyo", "M") + "月分ご請求"
                 break;
             case "請求書No.":
                 invoiceDetailInfo.no = row[1][0].plain_text
@@ -197,10 +198,48 @@ const main = () => {
     sheet?.getRange("M23").setValue(Math.ceil(subtotal * 0.1))
     sheet?.getRange("M28").setValue(0)
     sheet?.getRange("M29").setValue(subtotal + Math.ceil(subtotal * 0.1))
+    sheet?.getRange("E14").setValue(subtotal + Math.ceil(subtotal * 0.1))
+
+    // シートの再描画
+    SpreadsheetApp.flush()
 
     // PDF化
+    const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?`
+    const exportOpts = {
+        exportFormat: 'pdf',
+        format: "pdf",
+        size: "A4",
+        portrait: "true",
+        fitw: "true",
+        docName: "false",
+        printtitle: "false",
+        pagenumbers: "false",
+        gridlines: "false",
+        fxr: "false",
+        range: "A1%3AS36",
+        top_margin: "0.5",
+        right_margin: "0.2",
+        left_margin: "0.2",
+        bottom_margin: "0.5",
+        horizontal_alignment: "CENTER",
+        vertical_alignment: "CENTER",
+        gid: sheet?.getSheetId()
+    }
+    const urlExt = [];
+    for (const [key, value] of Object.entries(exportOpts)) {
+        urlExt.push(key + "=" + value)
+    }
+    const options = urlExt.join("&")
+    const pdfResponse = UrlFetchApp.fetch(exportUrl + options, {
+        headers: {
+            "Authorization": "Bearer " + ScriptApp.getOAuthToken()
+        }
+    })
+    const blob = pdfResponse.getBlob().setName(`${Utilities.formatDate(newDate, "Asia/Tokyo", "MM")}月分_${invoiceBaseInfo.name}` + ".pdf")
 
     // GoogleDriveに保存
+    const folder = DriveApp.getFolderById(folderId)
+    folder.createFile(blob)
 
     // PDFのURLをNotionに書き込み
 }
