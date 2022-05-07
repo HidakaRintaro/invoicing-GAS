@@ -2,7 +2,7 @@ export interface Attendance {
     startDate: string,
     endDate: string,
     break: number,
-    business: string,
+    summary: string,
     price: number,
     unit: string,
 }
